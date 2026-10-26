@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+boto3
+asyncpg
+dotenv
+psycopg
+redis
+passlib[bcrypt]
