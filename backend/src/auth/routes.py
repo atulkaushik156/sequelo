@@ -3,8 +3,11 @@ import uuid
 import redis.asyncio as redis
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import APIKeyCookie
-from pydantic import BaseModel
-from passlib.context import CryptContext
+from pydantic import BaseModel, Field
+
+# Use Argon2 instead of the broken passlib/bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
 # Import your Neon DB connection pool
 from database import get_db_connection
@@ -23,20 +26,20 @@ redis_client = redis.Redis(
 )
 
 # ==========================================
-# PASSWORD HASHING SETUP
+# PASSWORD HASHING SETUP (ARGON2)
 # ==========================================
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ph = PasswordHasher()
 
 # ==========================================
 # PYDANTIC SCHEMAS
 # ==========================================
 class RegisterRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(..., max_length=1024)
 
 class LoginRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(..., max_length=1024)
 
 # ==========================================
 # AUTHENTICATION DEPENDENCY
@@ -50,7 +53,6 @@ async def get_current_user(request: Request, session_cookie: str = Depends(cooki
             detail="Not logged in. Session cookie missing."
         )
 
-    # Await the async fetch from Redis
     user_id = await redis_client.get(session_id)
     
     if not user_id:
@@ -76,8 +78,8 @@ async def register(req: RegisterRequest, conn = Depends(get_db_connection)):
             detail="Email is already registered."
         )
 
-    # Hash the password securely before saving
-    hashed_password = pwd_context.hash(req.password)
+    # Argon2 handles any length natively
+    hashed_password = ph.hash(req.password)
 
     user_id = await conn.fetchval('''
         INSERT INTO users (email, password_hash) 
@@ -97,8 +99,16 @@ async def login(req: LoginRequest, response: Response, conn = Depends(get_db_con
         req.email
     )
 
-    # Verify user exists, has a password (not just OAuth), and password matches hash
-    if not user_record or not user_record["password_hash"] or not pwd_context.verify(req.password, user_record["password_hash"]):
+    if not user_record or not user_record["password_hash"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid credentials"
+        )
+        
+    try:
+        # Argon2 verify takes the stored hash first, then the plain password
+        ph.verify(user_record["password_hash"], req.password)
+    except VerifyMismatchError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Invalid credentials"
@@ -107,7 +117,6 @@ async def login(req: LoginRequest, response: Response, conn = Depends(get_db_con
     session_id = str(uuid.uuid4())
     user_id_str = str(user_record["id"])
     
-    # Save to Redis asynchronously with a 24-hour expiration (86400 seconds)
     await redis_client.setex(
         name=session_id,
         time=86400,
@@ -128,10 +137,8 @@ async def logout(response: Response, request: Request):
     session_id = request.cookies.get("session_id")
     
     if session_id:
-        # Delete the session from Redis
         await redis_client.delete(session_id)
     
-    # Instruct the browser to destroy the cookie
     response.delete_cookie(key="session_id", httponly=True, samesite="lax")
     
     return {"message": "Successfully logged out"}

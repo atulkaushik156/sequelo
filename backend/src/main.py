@@ -33,7 +33,9 @@ app = FastAPI(title="SaaS Text-to-SQL API", lifespan=lifespan)
 # Configure CORS for Next.js frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], 
+   allow_origins=[
+    "http://localhost:3000",
+    "https://your-production-app.com"], 
     allow_credentials=True,                  
     allow_methods=["*"],
     allow_headers=["*"],

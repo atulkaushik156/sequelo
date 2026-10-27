@@ -1,3 +1,44 @@
 /myenv
 .env
 text.txt
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node modules (Massive folder, never commit this!)
+node_modules/
+
+# Production Build Output
+dist/
+dist-ssr/
+*.local
+
+# Environment Variables (Keep secrets out of GitHub!)
+.env
+.env.*
+!.env.example
+
+# Editor directories and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+myenv/
+venv/
