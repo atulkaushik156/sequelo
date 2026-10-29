@@ -3,7 +3,7 @@ import duckdb
 from typing import TypedDict, Dict, Any, List
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from analyzing_agent.schemas import TableSchemaList, RelationshipList
 
@@ -14,18 +14,21 @@ class PipelineState(TypedDict):
     table_schemas: List[Dict[str, Any]]
     relationships: List[Dict[str, Any]]
 
-# Cap max_tokens safely below the 1000 OTPM limit
-llm = ChatGroq(
-    api_key=os.getenv("GROQ_API_KEY"),
-    model_name=os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant"),
-    temperature=0,
-    max_tokens=800 
+# Initialize Gemini
+llm = ChatGoogleGenerativeAI(
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    model=os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-8b"),
+    temperature=0
 )
 
 def node_extract_metadata(state: PipelineState):
     raw_metadata = {}
-    conn = duckdb.connect(':memory:')
     
+    # Fast exit if no S3 URLs are provided
+    if not state.get("s3_urls"):
+        return {"raw_metadata": raw_metadata}
+        
+    conn = duckdb.connect(':memory:')
     endpoint = os.getenv("AWS_ENDPOINT_URL_S3", "").replace("https://", "")
     
     conn.execute(f"""
@@ -37,8 +40,10 @@ def node_extract_metadata(state: PipelineState):
     """)
     
     for alias, url in state["s3_urls"].items():
+        if not url: 
+            continue
+            
         conn.execute(f"CREATE VIEW {alias} AS SELECT * FROM read_csv_auto('{url}')")
-        
         columns = conn.execute(f"DESCRIBE SELECT * FROM {alias}").fetchall()
         column_names = [c[0] for c in columns]
         
@@ -53,18 +58,21 @@ def node_extract_metadata(state: PipelineState):
     return {"raw_metadata": raw_metadata}
 
 def node_infer_tables(state: PipelineState):
+    # LLM SAFETY CHECK: Prevent empty API calls
+    if not state.get("raw_metadata"):
+        return {"table_schemas": []}
+        
     structured_llm = llm.with_structured_output(TableSchemaList)
     
-    # THE FIX: A draconian system prompt that forces empty strings for column descriptions
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a Data Architect operating under a STRICT token limit.
+        ("system", """You are an expert Data Architect. Analyze the provided raw CSV metadata to build a Data Dictionary.
 
-CRITICAL INSTRUCTIONS TO PREVENT CRASHING:
-1. 'table_type': Output "Fact" or "Dimension".
-2. 'business_purpose': Maximum 3 words (e.g., "Customer orders").
-3. 'business_description' (for EVERY column): You MUST output an empty string "". Do NOT write descriptions for columns.
+For each table, you must:
+1. Classify it as a "Fact" (transactional data) or a "Dimension" (descriptive attributes).
+2. Define the overall business purpose of the table concisely.
+3. Describe the business meaning of every column based on its name and sample data.
 
-If you write column descriptions, the system will run out of tokens and crash. Output JSON strictly."""),
+Output strictly as JSON matching the schema."""),
         ("user", "Raw Metadata: {metadata}")
     ])
     chain = prompt | structured_llm
@@ -72,22 +80,125 @@ If you write column descriptions, the system will run out of tokens and crash. O
     return {"table_schemas": [schema.model_dump() for schema in result.schemas]}
 
 def node_infer_relationships(state: PipelineState):
+    # LLM SAFETY CHECK: Prevent empty API calls
+    if not state.get("table_schemas"):
+        return {"relationships": []}
+        
     structured_llm = llm.with_structured_output(RelationshipList)
     
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are an elite Data Architect. Infer logical relationships between tables to build a Star Schema. 
+    valid_schemas = {
+        t["table_alias"]: [c["name"] for c in t["columns"]] 
+        for t in state["table_schemas"]
+    }
+    
+    conn = duckdb.connect(':memory:')
+    endpoint = os.getenv("AWS_ENDPOINT_URL_S3", "").replace("https://", "")
+    conn.execute(f"""
+        INSTALL httpfs;
+        LOAD httpfs;
+        SET s3_endpoint='{endpoint}';
+        SET s3_access_key_id='{os.getenv("AWS_ACCESS_KEY_ID")}';
+        SET s3_secret_access_key='{os.getenv("AWS_SECRET_ACCESS_KEY")}';
+    """)
+    
+    for alias, url in state["s3_urls"].items():
+        if url:
+            conn.execute(f"CREATE VIEW {alias} AS SELECT * FROM read_csv_auto('{url}')")
+    
+    max_retries = 3
+    attempt = 0
+    error_feedback = ""
+    final_valid_relationships = []
+    
+    while attempt < max_retries:
+        attempt += 1
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an elite Data Architect inferring Foreign Key relationships based on semantics.
 
-RULES:
-1. Identify Primary Key to Foreign Key relationships.
-2. Evaluate composite keys or date/time mappings if standard IDs are absent.
-3. Classify relationship type (1:1, 1:N, N:1, or N:M).
+CRITICAL RULES:
+1. STRICT ALLOWLIST: You MUST ONLY use the exact table and column names provided below. 
+2. 'source_table': The parent/dimension table holding the Primary Key.
+3. 'source_column': The Primary Key column in the parent table.
+4. 'target_table': The child/fact table holding the Foreign Key.
+5. 'target_column': The Foreign Key column mapping back to the source.
+6. NOT ALL TABLES ARE RELATED. If the tables do not logically connect, return an empty list [].
 
-Output strictly as JSON matching the requested schema."""),
-        ("user", "Table Schemas: {schemas}")
-    ])
-    chain = prompt | structured_llm
-    result = chain.invoke({"schemas": state["table_schemas"]})
-    return {"relationships": [rel.model_dump() for rel in result.relationships]}
+Output strictly as JSON."""),
+            ("user", "VALID TABLES AND EXACT COLUMNS ALLOWLIST:\n{valid_schemas}\n{error_feedback}")
+        ])
+        
+        chain = prompt | structured_llm
+        result = chain.invoke({
+            "valid_schemas": str(valid_schemas),
+            "error_feedback": error_feedback
+        })
+        
+        proposed_relationships = result.relationships
+        
+        if not proposed_relationships:
+            return {"relationships": []}
+            
+        current_valid = []
+        current_errors = []
+        
+        for rel in proposed_relationships:
+            try:
+                pk_query = f"""
+                    SELECT 
+                        COUNT("{rel.source_column}") AS total_rows,
+                        COUNT(DISTINCT "{rel.source_column}") AS unique_vals
+                    FROM {rel.source_table}
+                    WHERE "{rel.source_column}" IS NOT NULL
+                """
+                pk_stats = conn.execute(pk_query).fetchone()
+                
+                if pk_stats[0] == 0:
+                    current_errors.append(f"Failed: {rel.source_table}.{rel.source_column} contains no data.")
+                    continue
+                    
+                uniqueness_ratio = pk_stats[1] / pk_stats[0]
+                if uniqueness_ratio < 0.95:
+                    current_errors.append(f"Failed: {rel.source_table}.{rel.source_column} is not unique enough to act as a Primary Key ({uniqueness_ratio:.1%} unique).")
+                    continue
+
+                fk_query = f"""
+                    SELECT 
+                        COUNT("{rel.target_column}") AS total_child_keys,
+                        SUM(CASE WHEN CAST("{rel.target_column}" AS VARCHAR) IN (
+                            SELECT CAST("{rel.source_column}" AS VARCHAR) 
+                            FROM {rel.source_table} 
+                            WHERE "{rel.source_column}" IS NOT NULL
+                        ) THEN 1 ELSE 0 END) AS matching_keys
+                    FROM {rel.target_table}
+                    WHERE "{rel.target_column}" IS NOT NULL
+                """
+                fk_stats = conn.execute(fk_query).fetchone()
+                total_child = fk_stats[0]
+                matched_child = fk_stats[1] or 0
+                
+                if total_child == 0:
+                    current_errors.append(f"Failed: {rel.target_table}.{rel.target_column} contains only NULL values.")
+                    continue
+                    
+                match_rate = matched_child / total_child
+                if match_rate < 0.80:
+                    current_errors.append(f"Failed: Low match rate ({match_rate:.1%}) between {rel.target_table}.{rel.target_column} and {rel.source_table}.{rel.source_column}.")
+                    continue
+                    
+                current_valid.append(rel.model_dump())
+                
+            except Exception as e:
+                current_errors.append(f"SQL Validation Error on {rel.target_table}.{rel.target_column} -> {rel.source_table}.{rel.source_column}: {str(e)}")
+        
+        final_valid_relationships = current_valid
+        
+        if not current_errors:
+            break
+            
+        error_feedback = "\nPREVIOUS ATTEMPT FAILED WITH THESE ERRORS:\n" + "\n".join(current_errors) + "\nPlease remove invalid relationships, correct your mapping, or return an empty list."
+        
+    return {"relationships": final_valid_relationships}
 
 workflow = StateGraph(PipelineState)
 workflow.add_node("extract_metadata", node_extract_metadata)

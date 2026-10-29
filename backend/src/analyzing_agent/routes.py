@@ -1,12 +1,7 @@
 import json
 import traceback
-import os
 from fastapi import APIRouter, HTTPException, Depends, Body
-from pydantic import BaseModel
 from typing import Dict, Any
-
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
 
 from analyzing_agent.pipeline import ingestion_pipeline
 from auth.routes import get_current_user
@@ -27,7 +22,10 @@ async def analyze_chat_schema(
     records = await conn.fetch('''
         SELECT table_alias, s3_url 
         FROM user_datasets 
-        WHERE chat_id = $1::uuid AND tenant_id = $2
+        WHERE chat_id = $1::uuid 
+          AND tenant_id = $2 
+          AND s3_url IS NOT NULL 
+          AND s3_url != ''
     ''', chat_id, user_id)
     
     if not records:
@@ -56,27 +54,24 @@ async def analyze_chat_schema(
 @router.post("/chats/{chat_id}/finalize-schema")
 async def finalize_schema(
     chat_id: str,
-    req: dict = Body(...), # THE FIX: Body(...) forces FastAPI to read the JSON correctly
+    req: dict = Body(...),
     user_id: str = Depends(get_current_user),
     conn = Depends(get_db_connection)
 ):
     """Saves the user-verified schema to the database."""
     
-    # Safely extract arrays from the frontend request
     schema_metadata = {
         "tables": req.get("table_schemas", []),
         "relationships": req.get("relationships", []),
         "metrics": req.get("custom_metrics", [])
     }
     
-    # Save the populated JSON to Neon DB
     result = await conn.execute('''
         UPDATE chats 
         SET schema_metadata = $1::jsonb
         WHERE chat_id = $2::uuid AND tenant_id = $3
     ''', json.dumps(schema_metadata), chat_id, user_id)
     
-    # If no rows were updated, the chat ID doesn't exist
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Chat not found. Cannot save schema.")
     
@@ -84,61 +79,42 @@ async def finalize_schema(
 
 
 # ---------------------------------------------------------
-# 3. CHAT AI (Chat Interface)
+# 3. CHAT STATUS (Handles UI Routing)
 # ---------------------------------------------------------
-class ChatMessageRequest(BaseModel):
-    message: str
-
-# Setup Groq for the chat responses
-chat_llm = ChatGroq(
-    api_key=os.getenv("GROQ_API_KEY"),
-    model_name=os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant"),
-    temperature=0
-)
-
-@router.post("/chats/{chat_id}/messages")
-async def send_chat_message(
+@router.get("/chats/{chat_id}/status")
+async def get_chat_status(
     chat_id: str,
-    req: ChatMessageRequest,
     user_id: str = Depends(get_current_user),
     conn = Depends(get_db_connection)
 ):
-    """Fetches the saved schema and generates an AI response based on the user's prompt."""
+    """Checks the database to determine which screen the frontend should display."""
     
-    # 1. Fetch the finalized schema from Neon DB
-    record = await conn.fetchrow('''
-        SELECT schema_metadata 
-        FROM chats 
+    chat = await conn.fetchrow('''
+        SELECT schema_metadata FROM chats 
         WHERE chat_id = $1::uuid AND tenant_id = $2
     ''', chat_id, user_id)
     
-    if not record or not record['schema_metadata']:
-        raise HTTPException(status_code=400, detail="Schema not finalized for this chat yet.")
+    if chat:
+        metadata = chat['schema_metadata']
         
-    schema_context = record['schema_metadata']
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except Exception:
+                metadata = {}
+                
+        if metadata and isinstance(metadata, dict) and "tables" in metadata:
+            return {"step": 3}
+            
+    dataset_count = await conn.fetchval('''
+        SELECT COUNT(*) FROM user_datasets 
+        WHERE chat_id = $1::uuid 
+          AND tenant_id = $2
+          AND s3_url IS NOT NULL 
+          AND s3_url != ''
+    ''', chat_id, user_id)
     
-    # 2. Build the System Prompt injecting the dynamic schema
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are an expert Data Analyst AI. 
-You answer user questions based strictly on the following database schema and relationships.
-
-DATA SCHEMA:
-{schema_context}
-
-If the user asks a data question, provide the exact DuckDB SQL query needed to get the answer. 
-If they ask a general question, answer it clearly based on the schema's business logic."""),
-        ("user", "{user_message}")
-    ])
-    
-    # 3. Query Groq AI
-    try:
-        chain = prompt | chat_llm
-        result = await chain.ainvoke({
-            "schema_context": json.dumps(schema_context),
-            "user_message": req.message
-        })
+    if dataset_count and dataset_count > 0:
+        return {"step": 2}
         
-        return {"reply": result.content}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"LLM Chat Error: {str(e)}")
+    return {"step": 1}

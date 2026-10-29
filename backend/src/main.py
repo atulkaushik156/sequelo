@@ -14,6 +14,9 @@ from chat.create_chat import router as chat_router
 from file_upload.routes import router as file_upload_router
 from analyzing_agent.routes import router as schema_router
 
+# NEW: Import the chat agent router for streaming SQL execution
+from chat.routes import router as chat_agent_router
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,6 +40,7 @@ app.add_middleware(
     CORSMiddleware,
    allow_origins=[
     "http://localhost:3000",
+    "http://localhost:5173", # Added Vite default just in case
     "https://your-production-app.com"], 
     allow_credentials=True,                  
     allow_methods=["*"],
@@ -57,12 +61,15 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "An unexpected server error occurred. Please try again later."},
     )
 
-# Register the routes with FastAPI
+# Register the routes with FastAPI (Exactly as you had them)
 app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(chat_router)
 app.include_router(file_upload_router)
 app.include_router(schema_router, prefix="/api", tags=["Schema Verification"])
+
+# NEW: Register the AI streaming chat agent
+app.include_router(chat_agent_router, prefix="/api", tags=["Chat Agent Processing"])
 
 @app.get("/")
 async def root():

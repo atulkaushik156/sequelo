@@ -10,3 +10,5 @@ passlib[bcrypt]
 duckdb
 langgraph
 langchain-groq
+langchain-google-genai
+sqlglot
