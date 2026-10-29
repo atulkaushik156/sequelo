@@ -1,13 +1,9 @@
 import json
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
 
-# IMPORTANT: Ensure this matches the name of your LangGraph file
-# If you renamed it back to chat_agent.py, change this to: from chat.chat_agent import chat_engine
 from chat.chat_agent_graph import chat_engine 
-
 from auth.routes import get_current_user
 from database import get_db_connection
 
@@ -16,7 +12,6 @@ router = APIRouter()
 class ChatMessageRequest(BaseModel):
     message: str
 
-# FIX: Endpoint is now exactly /chats/{chat_id}/messages to match your frontend
 @router.post("/chats/{chat_id}/messages")
 async def process_chat_query(
     chat_id: str,
@@ -69,57 +64,52 @@ async def process_chat_query(
         "retrieved_context": retrieved_context
     }
     
-    # 6. Stream Generator Setup
-    async def event_generator():
-        full_response = ""
-        generated_sql = ""
-        new_rule = None
+    full_response = ""
+    generated_sql = ""
+    new_rule = None
+    
+    try:
+        # Run graph to completion
+        final_state = await chat_engine.ainvoke(initial_state)
         
-        async for event in chat_engine.astream_events(initial_state, version="v2"):
-            kind = event["event"]
-            node = event.get("metadata", {}).get("langgraph_node")
+        status = final_state.get("status")
+        error_reason = final_state.get("error_reason", "Request blocked.")
+        generated_sql = final_state.get("generated_sql", "")
+        new_rule = final_state.get("extracted_business_logic")
+        
+        if status in ["rejected", "clarify"]:
+            prefix = "Request blocked: " if status == "rejected" else ""
+            full_response = f"{prefix}{error_reason}"
+        else:
+            messages = final_state.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                full_response = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
 
-            if kind == "on_chat_model_stream" and node == "synthesizer":
-                chunk = event["data"]["chunk"].content
-                if chunk:
-                    full_response += chunk
-                    yield chunk 
-            
-            elif kind == "on_chain_end" and node == "drafter":
-                generated_sql = event["data"]["output"].get("generated_sql", "")
-                
-            elif kind == "on_chain_end" and node == "supervisor":
-                status = event["data"]["output"].get("status")
-                
-                # Gracefully intercept rejections OR clarification requests and stream them to the UI
-                if status in ["rejected", "clarify"]:
-                    error_reason = event["data"]["output"].get("error_reason", "Request blocked.")
-                    prefix = "Request blocked: " if status == "rejected" else ""
-                    full_response = f"{prefix}{error_reason}"
-                    yield full_response
-                
-                new_rule = event["data"]["output"].get("extracted_business_logic")
+    except Exception as e:
+        print(f"Graph execution error: {e}")
+        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
-        # 7. Persist to DB once the stream completes
-        if full_response.strip():
+    # 6. Save to DB
+    if full_response.strip():
+        try:
             async with conn.transaction():
-                # Save User Message
                 await conn.execute(
                     "INSERT INTO messages (chat_id, tenant_id, role, content) VALUES ($1, $2, 'user', $3)",
                     chat_id, user_id, req.message
                 )
-                # Save AI Response & Generated SQL
                 await conn.execute(
                     "INSERT INTO messages (chat_id, tenant_id, role, content, metadata) VALUES ($1, $2, 'assistant', $3, $4::jsonb)",
                     chat_id, user_id, full_response, json.dumps({"generated_sql": generated_sql})
                 )
-                
-                # Save newly learned business rule
                 if new_rule:
                     rule_text = json.dumps(new_rule)
                     await conn.execute(
                         "INSERT INTO business_context_embeddings (chat_id, tenant_id, context_text) VALUES ($1, $2, $3)",
                         chat_id, user_id, rule_text
                     )
+        except Exception as db_err:
+            print(f"Failed to save message history to DB: {db_err}")
 
-    return StreamingResponse(event_generator(), media_type="text/plain")
+    # Return standard JSON that normal frontend fetch/axios calls expect
+    return {"reply": full_response, "generated_sql": generated_sql}

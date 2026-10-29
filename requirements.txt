@@ -12,3 +12,5 @@ langgraph
 langchain-groq
 langchain-google-genai
 sqlglot
+numpy 
+pandas
