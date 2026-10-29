@@ -10,18 +10,19 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 2. TABLE CREATION
 -- ==============================================================================
 
-
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT, -- Removed NOT NULL to allow OAuth logins later
+    password_hash TEXT, 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 -- Table: chats (The Session Parent)
 CREATE TABLE IF NOT EXISTS chats (
     chat_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR NOT NULL,
     title VARCHAR NOT NULL,
+    schema_metadata JSONB DEFAULT '{}'::jsonb, -- NEW: Stores the deterministic JSON from the Schema Wizard
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -31,7 +32,7 @@ CREATE TABLE IF NOT EXISTS user_datasets (
     chat_id UUID NOT NULL REFERENCES chats(chat_id) ON DELETE CASCADE,
     tenant_id VARCHAR NOT NULL,
     original_filename VARCHAR NOT NULL,
-    table_alias VARCHAR NOT NULL,
+    table_alias VARCHAR NOT NULL, -- STRICT: Must always have an alias for SQL querying
     s3_url VARCHAR NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -41,9 +42,9 @@ CREATE TABLE IF NOT EXISTS business_context_embeddings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID NOT NULL REFERENCES chats(chat_id) ON DELETE CASCADE,
     tenant_id VARCHAR NOT NULL,
-    table_alias VARCHAR NOT NULL,
+    table_alias VARCHAR, -- MODIFIED: Nullable so you can store global custom metrics/rules not tied to one table
     context_text TEXT NOT NULL,
-    -- Adjust dimensions (e.g., 1536 for OpenAI, 768 for Nomic/Llama, 384 for MiniLM)
+    -- Adjust dimensions based on your embedding model (e.g., 1536 for OpenAI, 384 for MiniLM)
     embedding vector(1536), 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

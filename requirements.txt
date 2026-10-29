@@ -3,7 +3,10 @@ uvicorn
 python-multipart
 boto3
 asyncpg
-dotenv
+python-dotenv
 psycopg
 redis
 passlib[bcrypt]
+duckdb
+langgraph
+langchain-groq

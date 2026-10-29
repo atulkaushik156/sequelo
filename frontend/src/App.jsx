@@ -17,7 +17,7 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/chat/:chat_id" element={<ChatView />} />
+          <Route path="/chat/:chatId" element={<ChatView />} />
         </Route>
       </Routes>
     </BrowserRouter>

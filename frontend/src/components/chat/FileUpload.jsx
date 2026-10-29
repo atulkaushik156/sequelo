@@ -1,11 +1,10 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, FileSpreadsheet, X, Loader2, Database } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, X, Loader2, Database, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import { cn } from '../../utils/cn';
 
-// Helper to beautifully format file sizes (e.g., 2.4 MB)
 const formatSize = (bytes) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -20,7 +19,6 @@ export default function FileUpload({ chatId, onComplete }) {
   const [isUploading, setIsUploading] = useState(false);
   const fileRef = useRef(null);
 
-  // Filters valid files and prevents adding duplicates
   const processFiles = (selectedFiles) => {
     const fileArray = Array.from(selectedFiles);
     const validFiles = fileArray.filter(
@@ -32,13 +30,11 @@ export default function FileUpload({ chatId, onComplete }) {
     }
 
     setFiles(prev => {
-      // Check against already selected files to prevent duplicates
       const newFiles = validFiles.filter(vf => !prev.some(pf => pf.name === vf.name));
       return [...prev, ...newFiles];
     });
   };
 
-  // Drag and Drop Event Handlers
   const handleDragOver = (e) => {
     e.preventDefault();
     setIsDragging(true);
@@ -50,10 +46,9 @@ export default function FileUpload({ chatId, onComplete }) {
     if (e.dataTransfer.files?.length > 0) processFiles(e.dataTransfer.files);
   };
 
-  // Click Upload Handler
   const handleFileSelect = (e) => {
     if (e.target.files?.length > 0) processFiles(e.target.files);
-    if (fileRef.current) fileRef.current.value = ''; // Reset input
+    if (fileRef.current) fileRef.current.value = '';
   };
 
   const removeFile = (nameToRemove) => {
@@ -65,7 +60,6 @@ export default function FileUpload({ chatId, onComplete }) {
     setIsUploading(true);
     
     const formData = new FormData();
-    // FastAPI expects multiple files under the exact same key: 'files'
     files.forEach(file => {
       formData.append('files', file);
     });
@@ -76,7 +70,7 @@ export default function FileUpload({ chatId, onComplete }) {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Datasets processed successfully!');
-      onComplete(); // Move to Step 2 (Wizard)
+      onComplete(); 
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Upload failed. Please try again.');
     } finally {
@@ -87,7 +81,7 @@ export default function FileUpload({ chatId, onComplete }) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-4 sm:p-8 w-full max-w-3xl mx-auto overflow-y-auto">
       
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <div className="w-12 h-12 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-200 shadow-sm">
           <Database className="text-zinc-700" size={24} />
         </div>
@@ -95,7 +89,14 @@ export default function FileUpload({ chatId, onComplete }) {
         <p className="text-zinc-500 text-sm">Upload your CSV or Excel files. We will map them for natural language querying.</p>
       </div>
 
-      {/* Drag & Drop Zone */}
+      {/* NEW PRO TIP BANNER */}
+      <div className="mb-6 w-full p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex items-start gap-3 text-left shadow-sm">
+        <Info size={18} className="text-blue-500 mt-0.5 shrink-0" />
+        <p className="text-sm text-blue-700 leading-relaxed">
+          <span className="font-semibold text-blue-800">Pro Tip:</span> For the best AI analysis, please give your files clear, descriptive names before uploading. For example, if your file contains sales data, name it <code className="bg-blue-100/50 px-1.5 py-0.5 rounded text-xs text-blue-900 font-mono font-medium">sales.csv</code> rather than <code className="bg-blue-100/50 px-1.5 py-0.5 rounded text-xs text-blue-900 font-mono font-medium">Book1.csv</code>.
+        </p>
+      </div>
+
       <div 
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -113,11 +114,9 @@ export default function FileUpload({ chatId, onComplete }) {
           Click to browse or drag and drop files here
         </p>
         <p className="text-xs text-zinc-500 mt-2">Supports multiple .csv and .xlsx files</p>
-        {/* Added the 'multiple' attribute here! */}
         <input type="file" multiple accept=".csv,.xlsx" className="hidden" ref={fileRef} onChange={handleFileSelect} />
       </div>
 
-      {/* Animated File List */}
       <div className="w-full mt-6 space-y-3">
         <AnimatePresence>
           {files.map((file) => (
@@ -149,11 +148,7 @@ export default function FileUpload({ chatId, onComplete }) {
         </AnimatePresence>
       </div>
 
-      {/* Action Button */}
-      <motion.div 
-        layout
-        className="w-full mt-8"
-      >
+      <motion.div layout className="w-full mt-8">
         <button 
           onClick={handleUpload}
           disabled={files.length === 0 || isUploading}

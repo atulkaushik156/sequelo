@@ -11,6 +11,8 @@ from database import init_db_pool, close_db_pool
 from auth.routes import router as auth_router
 from file_upload.routes import router as upload_router
 from chat.create_chat import router as chat_router
+from file_upload.routes import router as file_upload_router
+from analyzing_agent.routes import router as schema_router
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +61,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(chat_router)
+app.include_router(file_upload_router)
+app.include_router(schema_router, prefix="/api", tags=["Schema Verification"])
 
 @app.get("/")
 async def root():
