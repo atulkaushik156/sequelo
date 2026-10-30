@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db_pool, close_db_pool
 
-# Imports based on your src/ directory structure
 from auth.routes import router as auth_router
 from file_upload.routes import router as upload_router
 from chat.create_chat import router as chat_router
@@ -63,11 +62,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ==========================================
-# ROUTER INCLUDES
-# ==========================================
-
-# Authentication (already has prefix="/api/auth" inside its file)
+# Authentication
 app.include_router(auth_router)
 
 # File upload
@@ -76,11 +71,9 @@ app.include_router(
     prefix="/api"
 )
 
-# Chat creation
-app.include_router(
-    chat_router, 
-    prefix="/api"
-)
+# Chat creation 
+# EXACT FIX: Removed prefix="/api" here because create_chat.py natively sets "/api/chats"
+app.include_router(chat_router)
 
 # Schema verification
 app.include_router(

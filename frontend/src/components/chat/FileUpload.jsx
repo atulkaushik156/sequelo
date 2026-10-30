@@ -66,7 +66,8 @@ export default function FileUpload({ chatId, onComplete }) {
     formData.append('chat_id', chatId);
 
     try {
-      await api.post('/upload_documents', formData, {
+      // FIX: Added /api to the upload endpoint to match main.py routing
+      await api.post('/api/upload_documents', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Datasets processed successfully!');

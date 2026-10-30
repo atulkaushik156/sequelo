@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class CreateChatRequest(BaseModel):
     title: Optional[str] = "New Chat"
 
-# 2. CHANGE TO "/": This combines with the prefix to become POST /api/chats/
-@router.post("/")
+# EXACT FIX: Changed to "" so the final route is strictly POST /api/chats
+@router.post("")
 async def create_chat(
     req: CreateChatRequest,
     user_id: str = Depends(get_current_user),
@@ -37,8 +37,8 @@ async def create_chat(
         logger.error(f"Failed to create chat: {e}")
         raise HTTPException(status_code=500, detail="Failed to create chat session.")
 
-# 3. CHANGE TO "/": This combines with the prefix to become GET /api/chats/
-@router.get("/")
+# EXACT FIX: Changed to "" so the final route is strictly GET /api/chats
+@router.get("")
 async def get_user_chats(
     user_id: str = Depends(get_current_user),
     conn = Depends(get_db_connection)
@@ -57,7 +57,7 @@ async def get_user_chats(
         logger.error(f"Failed to fetch chats: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch chats.")
 
-# 4. This combines with the prefix to become GET /api/chats/{chat_id}/messages
+# This combines with the prefix to become GET /api/chats/{chat_id}/messages
 @router.get("/{chat_id}/messages")
 async def get_chat_messages(
     chat_id: str,

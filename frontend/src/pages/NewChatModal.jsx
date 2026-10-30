@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../api/axios';
-import { pendingChatsMemory } from '../utils/secureStore'; // <-- IMPORT SECURE STORE
+import api from '../api/axios'; // Adjusted path for pages/ directory
+import { pendingChatsMemory } from '../utils/secureStore'; // Adjusted path for pages/ directory
 
 export default function NewChatModal({ isOpen, onClose }) {
   const [title, setTitle] = useState('');
@@ -15,7 +15,8 @@ export default function NewChatModal({ isOpen, onClose }) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const res = await api.post('/api/chats/', { title: title || 'New Chat' });
+      // FIX: Removed trailing slash from /api/chats
+      const res = await api.post('/api/chats', { title: title || 'New Chat' });
       const newChatId = res.data.chat_id;
       
       // 1. Lock it in Local Storage
@@ -35,7 +36,6 @@ export default function NewChatModal({ isOpen, onClose }) {
     }
   };
 
-  // ... (Keep the rest of the NewChatModal return statement exactly the same as before)
   if (!isOpen) return null;
 
   return (

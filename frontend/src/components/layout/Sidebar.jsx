@@ -13,8 +13,8 @@ export default function Sidebar() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // 1. Fetch recent chats
-    api.get('/api/chats/').then(res => setChats(res.data.chats || [])).catch(() => {});
+    // FIX: Removed trailing slash from /api/chats
+    api.get('/api/chats').then(res => setChats(res.data.chats || [])).catch(() => {});
     
     // 2. Fetch current Google authenticated user
     api.get('/api/auth/me').then(res => {

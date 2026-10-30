@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/axios'; // <-- FIX: Uses custom axios instance with cookies
 import FileUpload from '../components/chat/FileUpload';
 import Wizard from '../components/chat/Wizard';
 import ChatInterface from '../components/chat/ChatInterface';
@@ -14,7 +14,7 @@ export default function ChatView() {
     const checkChatStatus = async () => {
       setIsChecking(true);
       try {
-        const response = await axios.get(`/api/chats/${chatId}/status`);
+        const response = await api.get(`/api/chats/${chatId}/status`); // <-- FIX: using 'api'
         setStep(response.data.step);
       } catch (err) {
         console.error("Failed to fetch chat status:", err);
