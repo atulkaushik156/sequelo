@@ -67,14 +67,12 @@ async def upload_document(
     upload_results = []
 
     for file in files:
-        # STRICT BACKEND VALIDATION
         if not file.filename.lower().endswith((".csv", ".xlsx")):
             raise HTTPException(status_code=400, detail="Please use file format of CSV or Excel only.")
 
         clean_alias = create_table_alias(file.filename)
         file_uuid = str(uuid.uuid4())
         
-        # Keep original extension
         ext = ".xlsx" if file.filename.lower().endswith(".xlsx") else ".csv"
         b2_file_name = f"{user_id}/{chat_id}/{file_uuid}_{clean_alias}{ext}"
         s3_url = f"s3://{BUCKET_NAME}/{b2_file_name}"
@@ -121,6 +119,11 @@ async def generate_download_link(chat_id: str, file_id: str, user_id: str = Depe
     except Exception:
         raise HTTPException(status_code=500, detail="Could not generate download link")
 
+# ==============================================================================
+# 3. CHAT MESSAGE & VECTOR RAG ROUTES
+# ==============================================================================
+
+# Route for GETTING history
 @router.get("/chats/{chat_id}/messages")
 async def get_chat_history(chat_id: str, user_id: str = Depends(get_current_user), conn = Depends(get_db_connection)):
     records = await conn.fetch('SELECT role, content, metadata FROM messages WHERE chat_id = $1::uuid AND tenant_id = $2 ORDER BY created_at ASC', chat_id, user_id)
@@ -131,12 +134,13 @@ async def get_chat_history(chat_id: str, user_id: str = Depends(get_current_user
             try: meta = json.loads(meta)
             except: meta = {}
         sql = meta.get("generated_sql", "") if isinstance(meta, dict) else ""
-        frontend_messages.append({"role": row["role"], "content": row["content"], "sql": sql})
+        data = meta.get("data", None) if isinstance(meta, dict) else None
+        
+        frontend_messages.append({"role": row["role"], "content": row["content"], "sql": sql, "data": data})
     return {"messages": frontend_messages}
 
-# ==============================================================================
-# 3. CHAT MESSAGE & VECTOR RAG ROUTES
-# ==============================================================================
+
+# Route for POSTING a new message
 @router.post("/chats/{chat_id}/messages")
 async def process_chat_query(
     chat_id: str,
@@ -155,6 +159,7 @@ async def process_chat_query(
             
     raw_query_vector = await embeddings_model.aembed_query(req.message)
     query_vector = truncate_and_normalize(raw_query_vector, 768)
+    query_vector_str = json.dumps(query_vector)
     
     past_rules = await conn.fetch("""
         SELECT context_text 
@@ -162,7 +167,7 @@ async def process_chat_query(
         WHERE tenant_id = $1 AND chat_id = $2::uuid 
         ORDER BY embedding <=> $3::vector
         LIMIT 5
-    """, user_id, chat_id, str(query_vector))
+    """, user_id, chat_id, query_vector_str)
     
     retrieved_context = "\n".join([r['context_text'] for r in past_rules])
 
@@ -178,6 +183,7 @@ async def process_chat_query(
     
     full_response = ""
     generated_sql = ""
+    duckdb_result = None
     new_rule = None
     
     try:
@@ -186,6 +192,10 @@ async def process_chat_query(
         error_reason = final_state.get("error_reason", "Request blocked.")
         generated_sql = final_state.get("generated_sql", "")
         new_rule = final_state.get("extracted_business_logic")
+        
+        raw_result = final_state.get("duckdb_result")
+        if isinstance(raw_result, list):
+            duckdb_result = raw_result
         
         if status in ["rejected", "clarify"]:
             full_response = f"{'Request blocked: ' if status == 'rejected' else ''}{error_reason}"
@@ -200,7 +210,13 @@ async def process_chat_query(
         try:
             async with conn.transaction():
                 await conn.execute("INSERT INTO messages (chat_id, tenant_id, role, content) VALUES ($1::uuid, $2, 'user', $3)", chat_id, user_id, req.message)
-                await conn.execute("INSERT INTO messages (chat_id, tenant_id, role, content, metadata) VALUES ($1::uuid, $2, 'assistant', $3, $4::jsonb)", chat_id, user_id, full_response, json.dumps({"generated_sql": generated_sql}))
+                await conn.execute(
+                    "INSERT INTO messages (chat_id, tenant_id, role, content, metadata) VALUES ($1::uuid, $2, 'assistant', $3, $4::jsonb)", 
+                    chat_id, user_id, full_response, json.dumps({
+                        "generated_sql": generated_sql,
+                        "data": duckdb_result
+                    })
+                )
         except Exception as db_err:
             pass
             
@@ -218,4 +234,8 @@ async def process_chat_query(
             except Exception as vector_err:
                 pass
 
-    return {"reply": full_response, "generated_sql": generated_sql}
+    return {
+        "reply": full_response, 
+        "generated_sql": generated_sql, 
+        "data": duckdb_result
+    }

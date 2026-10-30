@@ -1,8 +1,95 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
 
-export default function ChatInterface({ chatId, token }) {
+// ==========================================
+// BULLETPROOF DATA TABLE COMPONENT
+// ==========================================
+function DataTable({ data }) {
+  const [sorting, setSorting] = useState([]);
+  
+  const columns = useMemo(() => {
+    if (!Array.isArray(data) || data.length === 0 || !data[0] || typeof data[0] !== 'object') {
+      return [];
+    }
+    
+    return Object.keys(data[0]).map(key => ({
+      header: String(key),
+      id: String(key),
+      accessorFn: row => row[key],
+      cell: info => {
+        try {
+          const val = info.getValue();
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'object') return JSON.stringify(val);
+          return String(val);
+        } catch (err) {
+          return 'Error';
+        }
+      }
+    }));
+  }, [data]);
+
+  const table = useReactTable({
+    data: Array.isArray(data) ? data : [],
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  if (!Array.isArray(data) || data.length === 0 || columns.length === 0) return null;
+
+  return (
+    <div className="mt-4 overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white text-sm">
+      <table className="w-full text-left">
+        <thead className="bg-gray-50 text-gray-700 font-semibold border-b border-gray-200">
+          {table.getHeaderGroups().map(headerGroup => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map(header => (
+                <th 
+                  key={header.id} 
+                  className="px-4 py-3 cursor-pointer hover:bg-gray-100 whitespace-nowrap select-none transition-colors"
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-1.5">
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === 'asc' ? (
+                      <span className="text-blue-600 font-bold">↑</span>
+                    ) : header.column.getIsSorted() === 'desc' ? (
+                      <span className="text-blue-600 font-bold">↓</span>
+                    ) : null}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {table.getRowModel().rows.map(row => (
+            <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
+              {row.getVisibleCells().map(cell => (
+                <td key={cell.id} className="px-4 py-2.5 whitespace-nowrap text-gray-700">
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 border-t border-gray-200 text-right">
+        {data.length} row{data.length !== 1 ? 's' : ''} (UI limited to 500 rows maximum)
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// MAIN INTERFACE
+// ==========================================
+export default function ChatInterface({ chatId }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]); 
@@ -14,6 +101,7 @@ export default function ChatInterface({ chatId, token }) {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+  
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -22,7 +110,7 @@ export default function ChatInterface({ chatId, token }) {
     if (!chatId) return;
     try {
       const response = await fetch(`/api/chats/${chatId}/files`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include' // <--- Sends session cookie
       });
       if (response.ok) {
         const data = await response.json();
@@ -39,7 +127,7 @@ export default function ChatInterface({ chatId, token }) {
       try {
         const response = await fetch(`/api/chats/${chatId}/messages`, {
           method: 'GET',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include' // <--- Sends session cookie
         });
         if (response.ok) {
           const data = await response.json();
@@ -53,12 +141,12 @@ export default function ChatInterface({ chatId, token }) {
     };
     fetchChatHistory();
     fetchFiles();
-  }, [chatId, token]);
+  }, [chatId]);
 
   const handleDownload = async (fileId, fileName) => {
     try {
       const response = await fetch(`/api/chats/${chatId}/files/${fileId}/download`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include' // <--- Sends session cookie
       });
       if (!response.ok) {
         alert("Failed to generate download link.");
@@ -78,9 +166,6 @@ export default function ChatInterface({ chatId, token }) {
     }
   };
 
-  // ==========================================
-  // FRONTEND VALIDATION & UPLOAD LOGIC
-  // ==========================================
   const handleFileUpload = async (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -88,10 +173,9 @@ export default function ChatInterface({ chatId, token }) {
     const file = files[0];
     const fileName = file.name.toLowerCase();
     
-    // STRICT FRONTEND VALIDATION
     if (!fileName.endsWith('.csv') && !fileName.endsWith('.xlsx')) {
       alert("Please use file format of CSV or Excel only.");
-      e.target.value = ""; // Reset input
+      e.target.value = ""; 
       return;
     }
 
@@ -103,12 +187,12 @@ export default function ChatInterface({ chatId, token }) {
     try {
       const response = await fetch(`/api/upload_documents`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include', // <--- Sends session cookie
         body: formData
       });
 
       if (response.ok) {
-        await fetchFiles(); // Refresh file list at the top
+        await fetchFiles(); 
         alert("File uploaded successfully.");
       } else {
         const errorData = await response.json();
@@ -136,42 +220,29 @@ export default function ChatInterface({ chatId, token }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
+        credentials: 'include', // <--- Crucial: Sends session cookie to FastAPI backend
         body: JSON.stringify({ message: userMsg })
       });
 
       if (!response.ok) throw new Error("Failed to send message");
 
-      setMessages(prev => [...prev, { role: 'assistant', content: '', sql: '' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '', sql: '', data: null }]);
       const contentType = response.headers.get("content-type");
 
       if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
         const cleanContent = data.reply || data.content || "No response generated.";
         const generatedSql = data.generated_sql || "";
+        const resultData = data.data || null;
         
         setMessages(prev => {
           const newMessages = [...prev];
           newMessages[newMessages.length - 1].content = cleanContent;
           newMessages[newMessages.length - 1].sql = generatedSql;
+          newMessages[newMessages.length - 1].data = resultData;
           return newMessages;
         });
-      } else {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let aiResponse = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          aiResponse += decoder.decode(value, { stream: true });
-          setMessages(prev => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1].content = aiResponse;
-            return newMessages;
-          });
-        }
       }
     } catch (error) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, a system error occurred while processing your request.' }]);
@@ -211,23 +282,21 @@ export default function ChatInterface({ chatId, token }) {
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[95%] md:max-w-4xl overflow-x-auto rounded-2xl p-5 shadow-sm ${
+              <div className={`max-w-[95%] md:max-w-5xl overflow-hidden rounded-2xl p-5 shadow-sm ${
                 msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none'
               }`}>
                 {msg.role === 'user' ? (
                   <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                 ) : (
                   <div className="flex flex-col gap-3 min-w-0">
-                    <div className="prose prose-sm md:prose-base max-w-none text-gray-800
-                      prose-tables:w-full prose-tables:border-collapse prose-tables:my-4 prose-tables:text-sm
-                      prose-th:border prose-th:border-gray-300 prose-th:bg-gray-100 prose-th:px-4 prose-th:py-3 prose-th:text-left prose-th:font-semibold prose-th:text-gray-700 prose-th:whitespace-nowrap
-                      prose-td:border prose-td:border-gray-200 prose-td:px-4 prose-td:py-2.5 prose-td:whitespace-nowrap
-                      prose-tr:nth-child(even):bg-gray-50 hover:prose-tr:bg-blue-50/50
-                      prose-p:leading-relaxed prose-p:my-2
-                      prose-strong:text-gray-900 prose-strong:font-semibold
-                    ">
+                    <div className="prose prose-sm md:prose-base max-w-none text-gray-800 prose-p:leading-relaxed prose-p:my-2 prose-strong:text-gray-900 prose-strong:font-semibold">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     </div>
+                    
+                    {msg.data && Array.isArray(msg.data) && msg.data.length > 0 && (
+                      <DataTable data={msg.data} />
+                    )}
+
                     {msg.sql && (
                       <details className="mt-2 text-xs group">
                         <summary className="cursor-pointer text-gray-400 hover:text-blue-600 font-medium select-none transition-colors">
@@ -258,7 +327,6 @@ export default function ChatInterface({ chatId, token }) {
         <div className="p-4 bg-white border-t border-gray-200 shrink-0">
           <form onSubmit={handleSendMessage} className="flex gap-3 max-w-4xl mx-auto relative items-center">
             
-            {/* UPLOAD BUTTON INTEGRATED INTO INPUT BAR */}
             <input 
               type="file" 
               ref={fileInputRef}

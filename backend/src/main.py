@@ -1,76 +1,104 @@
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import database connection managers
 from database import init_db_pool, close_db_pool
 
-# Import your routers 
+# Imports based on your src/ directory structure
 from auth.routes import router as auth_router
 from file_upload.routes import router as upload_router
 from chat.create_chat import router as chat_router
-from file_upload.routes import router as file_upload_router
 from analyzing_agent.routes import router as schema_router
-
-# NEW: Import the chat agent router for streaming SQL execution
 from chat.routes import router as chat_agent_router
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize Neon DB connection pool
     logger.info("Starting up: Connecting to Neon DB...")
     await init_db_pool()
-    
+
     yield
-    
-    # Shutdown: Close connections safely
-    logger.info("Shutting down: Closing Neon DB connections...")
+
+    logger.info("Shutting down: Closing database connections...")
     await close_db_pool()
 
-app = FastAPI(title="SaaS Text-to-SQL API", lifespan=lifespan)
 
-# Configure CORS for Next.js frontend integration
+app = FastAPI(
+    title="SaaS Text-to-SQL API",
+    lifespan=lifespan
+)
+
+
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=[
-    "http://localhost:3000",
-    "http://localhost:5173", # Added Vite default just in case
-    "https://your-production-app.com"], 
-    allow_credentials=True,                  
+    allow_origins=[
+        "http://localhost:3000",
+        "https://your-production-app.com"
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ==========================================
-# GLOBAL EXCEPTION HANDLER
-# ==========================================
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Log the full error internally so you can debug it in your terminal
-    logger.error(f"Unhandled system error on {request.method} {request.url}: {exc}")
-    
-    # Return a safe, generic JSON response to the user instead of crashing
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "An unexpected server error occurred. Please try again later."},
+    logger.exception(
+        "Unhandled error on %s %s",
+        request.method,
+        request.url
     )
 
-# Register the routes with FastAPI (Exactly as you had them)
-app.include_router(auth_router)
-app.include_router(upload_router)
-app.include_router(chat_router)
-app.include_router(file_upload_router)
-app.include_router(schema_router, prefix="/api", tags=["Schema Verification"])
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An unexpected server error occurred. Please try again later."
+        }
+    )
 
-# NEW: Register the AI streaming chat agent
-app.include_router(chat_agent_router, prefix="/api", tags=["Chat Agent Processing"])
+
+# ==========================================
+# ROUTER INCLUDES
+# ==========================================
+
+# Authentication (already has prefix="/api/auth" inside its file)
+app.include_router(auth_router)
+
+# File upload
+app.include_router(
+    upload_router, 
+    prefix="/api"
+)
+
+# Chat creation
+app.include_router(
+    chat_router, 
+    prefix="/api"
+)
+
+# Schema verification
+app.include_router(
+    schema_router,
+    prefix="/api",
+    tags=["Schema Verification"]
+)
+
+# Chat agent / LangGraph processing
+app.include_router(
+    chat_agent_router,
+    prefix="/api",
+    tags=["Chat Agent Processing"]
+)
+
 
 @app.get("/")
 async def root():
-    return {"status": "API is running. Database pool is active."}
+    return {
+        "status": "API is running. Database pool is active."
+    }
