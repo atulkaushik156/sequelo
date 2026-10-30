@@ -12,5 +12,6 @@ langgraph
 langchain-groq
 langchain-google-genai
 sqlglot
+pgvector
 numpy 
 pandas
