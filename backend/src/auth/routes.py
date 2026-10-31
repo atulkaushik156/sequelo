@@ -119,13 +119,13 @@ async def google_login():
     # CRITICAL FIX: Attach the cookie directly to the RedirectResponse
     redirect = RedirectResponse(url=auth_url)
     redirect.set_cookie(
-    key="oauth_state",
-    value=state,
-    httponly=True,
-    secure=COOKIE_SECURE,
-    samesite="none", # Changed from "lax"
-    max_age=600,
-    path="/"
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+        max_age=600,
+        path="/"
     )
     
     return redirect
@@ -253,13 +253,13 @@ async def google_callback(request: Request, response: Response, conn = Depends(g
     # 8. Set application session cookie and redirect directly on the RedirectResponse
     redirect_response = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
     redirect_response.set_cookie(
-    key="session_id", 
-    value=session_id, 
-    httponly=True,
-    secure=COOKIE_SECURE,
-    samesite="none", # Changed from "lax"
-    max_age=SESSION_TTL,
-    path="/"
+        key="session_id", 
+        value=session_id, 
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+        max_age=SESSION_TTL,
+        path="/"
     )
     
     return redirect_response

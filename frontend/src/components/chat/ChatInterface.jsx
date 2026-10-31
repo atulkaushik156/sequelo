@@ -11,16 +11,13 @@ export default function ChatInterface({ chatId }) {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Base backend URL from Vite environment variables (falls back to localhost for local dev)
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
-
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
   const fetchFiles = async () => {
     if (!chatId) return;
     try {
-      const response = await fetch(`${backendUrl}/api/chats/${chatId}/files`, { credentials: 'include' });
+      const response = await fetch(`/api/chats/${chatId}/files`, { credentials: 'include' });
       if (response.ok) { const data = await response.json(); if (data.files) setUploadedFiles(data.files); }
     } catch (error) { console.error("Failed to fetch files"); }
   };
@@ -29,7 +26,7 @@ export default function ChatInterface({ chatId }) {
     const fetchChatHistory = async () => {
       if (!chatId) return;
       try {
-        const response = await fetch(`${backendUrl}/api/chats/${chatId}/messages`, { method: 'GET', credentials: 'include' });
+        const response = await fetch(`/api/chats/${chatId}/messages`, { method: 'GET', credentials: 'include' });
         if (response.ok) { const data = await response.json(); if (data.messages) setMessages(data.messages); }
       } catch (error) { console.error("Failed history"); }
     };
@@ -39,7 +36,7 @@ export default function ChatInterface({ chatId }) {
 
   const handleDownload = async (fileId, fileName) => {
     try {
-      const response = await fetch(`${backendUrl}/api/chats/${chatId}/files/${fileId}/download`, { credentials: 'include' });
+      const response = await fetch(`/api/chats/${chatId}/files/${fileId}/download`, { credentials: 'include' });
       if (!response.ok) return alert("Failed link.");
       const data = await response.json();
       if (data.download_url) {
@@ -59,7 +56,8 @@ export default function ChatInterface({ chatId }) {
     const formData = new FormData(); formData.append("files", file); formData.append("chat_id", chatId);
 
     try {
-      const response = await fetch(`${backendUrl}/api/upload_documents`, { method: 'POST', credentials: 'include', body: formData });
+      // EXPLICIT PATH: /api/upload_documents
+      const response = await fetch(`/api/upload_documents`, { method: 'POST', credentials: 'include', body: formData });
       if (response.ok) { await fetchFiles(); alert("Success."); } 
       else { const err = await response.json(); alert(err.detail || "Failed."); }
     } catch (error) { alert("Error."); } 
@@ -73,11 +71,8 @@ export default function ChatInterface({ chatId }) {
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]); setIsTyping(true);
 
     try {
-      const response = await fetch(`${backendUrl}/api/chats/${chatId}/messages`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        credentials: 'include', 
-        body: JSON.stringify({ message: userMsg })
+      const response = await fetch(`/api/chats/${chatId}/messages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ message: userMsg })
       });
       if (!response.ok) throw new Error("Failed");
       
@@ -130,6 +125,10 @@ export default function ChatInterface({ chatId }) {
 
         <div className="p-4 bg-white border-t border-gray-200 shrink-0">
           <form onSubmit={handleSendMessage} className="flex gap-3 max-w-4xl mx-auto relative items-center">
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv, .xlsx" className="hidden" />
+            <button type="button" onClick={() => fileInputRef.current.click()} disabled={isUploading} className="p-3 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl">
+              {isUploading ? <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>}
+            </button>
             <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="flex-1 border border-gray-300 rounded-xl py-3.5 pl-4 pr-32 focus:outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="Ask a question..." disabled={isTyping} />
             <button type="submit" disabled={isTyping || !inputValue.trim()} className="absolute right-2 top-2 bottom-2 bg-blue-600 text-white px-6 rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2">Send <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg></button>
           </form>
