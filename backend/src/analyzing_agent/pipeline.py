@@ -14,10 +14,17 @@ class PipelineState(TypedDict):
     table_schemas: List[Dict[str, Any]]
     relationships: List[Dict[str, Any]]
 
-# Initialize Gemini
-llm = ChatGoogleGenerativeAI(
+# Initialize Primary and Fallback Gemini Models
+primary_llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY"),
-    model=os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-8b"),
+    model=os.getenv("GEMINI_MODEL_NAME", "gemini-3.1-flash-lite"),
+    temperature=0
+)
+
+# Define a backup model in case the primary one is unavailable
+fallback_llm = ChatGoogleGenerativeAI(
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    model="gemini-3.5-flash-lite", 
     temperature=0
 )
 
@@ -62,7 +69,10 @@ def node_infer_tables(state: PipelineState):
     if not state.get("raw_metadata"):
         return {"table_schemas": []}
         
-    structured_llm = llm.with_structured_output(TableSchemaList)
+    # Apply structured output to both models, then chain them with fallbacks
+    structured_primary = primary_llm.with_structured_output(TableSchemaList)
+    structured_fallback = fallback_llm.with_structured_output(TableSchemaList)
+    structured_llm = structured_primary.with_fallbacks([structured_fallback])
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are an expert Data Architect. Analyze the provided raw CSV metadata to build a Data Dictionary.
@@ -84,7 +94,10 @@ def node_infer_relationships(state: PipelineState):
     if not state.get("table_schemas"):
         return {"relationships": []}
         
-    structured_llm = llm.with_structured_output(RelationshipList)
+    # Apply structured output to both models, then chain them with fallbacks
+    structured_primary = primary_llm.with_structured_output(RelationshipList)
+    structured_fallback = fallback_llm.with_structured_output(RelationshipList)
+    structured_llm = structured_primary.with_fallbacks([structured_fallback])
     
     valid_schemas = {
         t["table_alias"]: [c["name"] for c in t["columns"]] 
