@@ -1,4 +1,3 @@
-
 import os
 import duckdb
 from typing import TypedDict, Dict, Any, List
@@ -15,11 +14,47 @@ class PipelineState(TypedDict):
     table_schemas: List[Dict[str, Any]]
     relationships: List[Dict[str, Any]]
 
+# ====================================================================
+# FALLBACK WRAPPER (Prevents system errors in the chat interface)
+# ====================================================================
+class FallbackGemini(ChatGoogleGenerativeAI):
+    """Intercepts 503 High Demand errors and automatically swaps the model string."""
+    
+    def _generate(self, *args, **kwargs):
+        try:
+            return super()._generate(*args, **kwargs)
+        except Exception as e:
+            err = str(e).lower()
+            if "503" in err or "unavailable" in err or "429" in err or "demand" in err:
+                original_model = self.model
+                self.model = os.getenv("GEMINI_FALLBACK_MODEL_NAME", "gemini-1.5-flash")
+                try:
+                    return super()._generate(*args, **kwargs)
+                finally:
+                    self.model = original_model
+            raise e
+
+    async def _agenerate(self, *args, **kwargs):
+        try:
+            return await super()._agenerate(*args, **kwargs)
+        except Exception as e:
+            err = str(e).lower()
+            if "503" in err or "unavailable" in err or "429" in err or "demand" in err:
+                original_model = self.model
+                self.model = os.getenv("GEMINI_FALLBACK_MODEL_NAME", "gemini-1.5-flash")
+                try:
+                    return await super()._agenerate(*args, **kwargs)
+                finally:
+                    self.model = original_model
+            raise e
+
 # Initialize Gemini
-llm = ChatGoogleGenerativeAI(
+# Uses max_retries=0 to ensure we instantly trigger the fallback model
+llm = FallbackGemini(
     google_api_key=os.getenv("GEMINI_API_KEY"),
     model=os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-8b"),
-    temperature=0
+    temperature=0,
+    max_retries=0 
 )
 
 def node_extract_metadata(state: PipelineState):
