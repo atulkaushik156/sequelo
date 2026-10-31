@@ -9,4 +9,7 @@ python init_db.py
 
 echo "Starting FastAPI server..."
 PORT=${PORT:-8000}
-uvicorn backend.src.main:app --host 0.0.0.0 --port $PORT
+
+# Move into the src directory so the absolute imports work
+cd backend/src
+uvicorn main:app --host 0.0.0.0 --port $PORT

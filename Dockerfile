@@ -19,9 +19,10 @@ RUN apt-get update && \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Backend Code and Database Script
+# Copy Backend Code and Database Scripts
 COPY backend/ ./backend/
 COPY init_db.py ./
+COPY query.sql ./
 
 # Copy built frontend from Stage 1
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
