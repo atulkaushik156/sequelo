@@ -12,7 +12,7 @@ export default function ChatInterface({ chatId }) {
   const fileInputRef = useRef(null);
 
   // Base backend URL from Vite environment variables (falls back to localhost for local dev)
-  const backendUrl = import.meta.env.VITE_API_URL || '';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
