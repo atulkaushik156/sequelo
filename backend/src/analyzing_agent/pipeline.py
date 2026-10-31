@@ -18,7 +18,8 @@ class PipelineState(TypedDict):
 primary_llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY"),
     model=os.getenv("GEMINI_MODEL_NAME", "gemini-3.1-flash-lite"),
-    temperature=0
+    temperature=0,
+    max_retries=0  # <-- ADD THIS: Instantly fail over to the fallback model on 503 errors
 )
 
 # Define a backup model in case the primary one is unavailable
@@ -26,6 +27,7 @@ fallback_llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY"),
     model="gemini-3.5-flash-lite", 
     temperature=0
+    # Keep default retries here so the fallback model still tries to recover if it hits a hiccup
 )
 
 def node_extract_metadata(state: PipelineState):
