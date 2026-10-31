@@ -14,9 +14,8 @@ export default function Login() {
   }, [searchParams]);
 
   const handleGoogleLogin = () => {
-    // Ensure you add VITE_BACKEND_URL to your frontend .env file, fallback to localhost
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
-    window.location.href = `${backendUrl}/api/auth/google/login`;
+    // Use a relative path so it automatically appends the current domain (e.g., your Render URL)
+    window.location.href = "/api/auth/google/login";
   };
 
   return (

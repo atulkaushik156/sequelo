@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000', 
+  baseURL: '/api', // Changed to relative path
   withCredentials: true, // Crucial: Sends the secure session_id cookie to FastAPI
 });
 
