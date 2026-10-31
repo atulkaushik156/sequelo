@@ -1,8 +1,12 @@
 # Use official Python image
 FROM python:3.10-slim
 
-# Install Redis Server and dependencies
-RUN apt-get update && apt-get install -y redis-server
+# FIX 1: Install Redis Server, PostgreSQL system dependencies, and build tools
+RUN apt-get update && apt-get install -y \
+    redis-server \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -14,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all project files
 COPY . .
 
-# FIX: Strip Windows line endings from the script so Linux can read it
+# Strip Windows line endings from the script so Linux can read it
 RUN sed -i 's/\r$//' start.sh
 # Grant execution rights to the startup script
 RUN chmod +x start.sh
