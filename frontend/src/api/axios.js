@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api', // Changed to relative path
+  // Use a root path instead of '/api' to prevent '/api/api/...' duplication
+  baseURL: '/', 
   withCredentials: true, // Crucial: Sends the secure session_id cookie to FastAPI
 });
 
