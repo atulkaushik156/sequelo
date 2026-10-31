@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,6 +13,10 @@ from chat.create_chat import router as chat_router
 from analyzing_agent.routes import router as schema_router
 from chat.routes import router as chat_agent_router
 from chat.delete_chat import router as delete_chat_router
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,7 +43,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://sequelo.vercel.app"
+        "https://sequelo.vercel.app",
+        "https://sequelo.onrender.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -92,8 +97,24 @@ app.include_router(
 app.include_router(delete_chat_router, prefix="/api")
 
 
-@app.get("/")
-async def root():
-    return {
-        "status": "API is running. Database pool is active."
-    }
+# Ensure this path matches the relative distance from main.py to frontend/dist
+frontend_dist = "/app/frontend/dist"
+
+# Mount Vite's static assets (JS/CSS)
+app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
+
+# Catch-all route for React SPA routing (e.g., /dashboard, /login)
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    # Do not intercept valid or broken /api calls
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+    requested_file = os.path.join(frontend_dist, full_path)
+    
+    # Serve specific files (like favicon.ico or manifest.json) if they exist
+    if os.path.exists(requested_file) and os.path.isfile(requested_file):
+        return FileResponse(requested_file)
+        
+    # Fall back to index.html for React Router
+    return FileResponse(os.path.join(frontend_dist, "index.html"))

@@ -1,14 +1,14 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000', 
-  withCredentials: true, // Crucial: Sends the secure session_id cookie to FastAPI
+  // Falls back to '' in production, pointing to the same Render domain
+  baseURL: import.meta.env.VITE_BACKEND_URL || '', 
+  withCredentials: true,
 });
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Check if it's a 401 Unauthorized error AND ensure we aren't already on the login page
     if (error.response?.status === 401 && window.location.pathname !== '/login') {
       window.location.href = '/login';
     }
