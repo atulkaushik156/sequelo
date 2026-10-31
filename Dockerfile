@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all project files
 COPY . .
 
+# FIX: Strip Windows line endings from the script so Linux can read it
+RUN sed -i 's/\r$//' start.sh
 # Grant execution rights to the startup script
 RUN chmod +x start.sh
 
