@@ -15,11 +15,26 @@ class PipelineState(TypedDict):
     relationships: List[Dict[str, Any]]
 
 # Initialize Gemini
-llm = ChatGoogleGenerativeAI(
+# 1. Initialize Primary Gemini LLM
+primary_llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY"),
     model=os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-8b"),
-    temperature=0
+    temperature=0,
+    max_retries=0, # CRITICAL: 0 means no blocking/waiting. Fails instantly on 503.
+    timeout=30     # Prevents freezing if the API completely hangs
 )
+
+# 2. Initialize Backup Gemini LLM (Alternative Model)
+fallback_llm = ChatGoogleGenerativeAI(
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    model="gemini-3.5-flash-lite", # Your stronger/alternative model
+    temperature=0,
+    max_retries=0, # Fail fast here as well if the entire network is down
+    timeout=30
+)
+
+# 3. Bind the fallback (Linear progression: Primary -> Fallback -> Error. No loops.)
+llm = primary_llm.with_fallbacks([fallback_llm])
 
 def node_extract_metadata(state: PipelineState):
     raw_metadata = {}
