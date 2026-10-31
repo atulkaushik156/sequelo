@@ -12,6 +12,7 @@ from file_upload.routes import router as upload_router
 from chat.create_chat import router as chat_router
 from analyzing_agent.routes import router as schema_router
 from chat.routes import router as chat_agent_router
+from chat.delete_chat import router as delete_chat_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ app.include_router(
     prefix="/api",
     tags=["Chat Agent Processing"]
 )
+app.include_router(delete_chat_router, prefix="/api")
 
 
 @app.get("/")
