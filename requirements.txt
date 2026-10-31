@@ -4,7 +4,7 @@ python-multipart
 boto3
 asyncpg
 python-dotenv
-psycopg
+psycopg[binary]
 redis
 passlib[bcrypt]
 duckdb
