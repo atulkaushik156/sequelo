@@ -63,7 +63,7 @@ class ChatState(TypedDict):
 
 class SupervisorOutput(BaseModel):
     decision: Literal["allow", "reject", "direct_reply"] = Field(
-        description="Choose 'allow' for DB queries, 'general queries' ,'if user say that he is going to assume a specific term as short or abbreviation' for conversation, or 'reject' for malicious input , 'general websearch and vague queries' , 'coding questions' , 'political questions' , problem solving questions , joke creation ."
+        description="Choose 'allow' for DB queries, 'general queries' ,'if user say that he is going to assume a specific term as short or abbreviation' for conversation, or 'reject' for malicious input,'coding questions' , 'general websearch and vague queries' , 'coding questions' , 'political questions' , problem solving questions , joke creation ."
     )
     reason_code: str = Field(description="E.g., DATA_QUERY, CONVERSATION, PROMPT_INJECTION, SQL_MUTATION.")
     explanation: str = Field(description="The response to show the user IF decision is 'direct_reply' or 'reject'.")
