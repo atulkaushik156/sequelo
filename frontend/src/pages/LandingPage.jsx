@@ -128,21 +128,21 @@ const features = [
     icon: ShieldCheck,
     title: 'Designed for Accuracy',
     label: 'DETERMINISTIC MATH',
-    copy: 'LLMs are terrible at math. Sequelo translates English to SQL, executes it on a deterministic DuckDB engine, and returns the pure number. If the math fails, our AI Judge self-corrects the query.',
+    copy: 'LLMs generate queries, not numerical results. Sequelo delegates calculations to DuckDB, allowing analytical operations to be performed by a database engine rather than relying on the language model to perform arithmetic.An evaluation loop provides execution feedback and supports limited SQL revision when errors occur.',
     tone: 'green',
   },
   {
     icon: BrainCircuit,
-    title: 'Self-Learning Business Context',
+    title: 'Business Rule Extraction',
     label: 'SUPERVISION LAYER',
-    copy: 'A chat that actually learns. Teach Sequelo what a VIP Customer or Gross Margin means. Our Supervision layer vectorizes your definitions and applies them permanently to all future queries.',
+    copy: 'A chat that actually learns. The supervisor agent can identify business definitions and metric rules expressed in natural language. This provides a foundation for incorporating domain-specific business context into analytical queries.',
     tone: 'violet',
   },
   {
     icon: LockKeyhole,
-    title: 'Enterprise-Grade Security Firewall',
+    title: 'SQL Validation',
     label: 'AST VALIDATION',
-    copy: 'Built for trust. Every generated query is parsed down to its Abstract Syntax Tree (AST) to mathematically guarantee only read-only `SELECT` statements are executed.',
+    copy: 'Built for trust. Sequelo uses SQLGlot to parse and validate AI-generated SQL before executing analytical queries through DuckDB. This adds a structured validation step between natural-language query generation and database execution.',
     tone: 'cyan',
   }
 ];
@@ -219,9 +219,7 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.28, ease }}
           >
-            Sequelo is an enterprise-grade AI Business Intelligence platform. Drag-and-drop your raw CSVs,
-            lock in your business rules visually, and get mathematically perfect answers in plain English—
-            no database setup required.
+            Sequelo is an AI-assisted analytics prototype that transforms natural-language questions about CSV datasets into DuckDB queries. Built with LangGraph and SQLGlot, it explores how AI can make data analysis more accessible through automated query generation and validation.
           </motion.p>
           <motion.div
             className="hero-actions"
@@ -229,7 +227,7 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.35, ease }}
           >
-            <Link to="/login" className="button primary">Try Sequelo Free <ArrowRight size={17} /></Link>
+            <Link to="/login" className="button primary">Explore Live Demo <ArrowRight size={17} /></Link>
             <a href="#architecture" className="button secondary">View Architecture</a>
           </motion.div>
         </div>
@@ -256,8 +254,8 @@ export default function LandingPage() {
             <Reveal className="comparison-card new">
               <div className="comparison-icon"><Zap size={22} /></div>
               <div className="status"><i /> THE SEQUELO WAY</div>
-              <h3>The CSV Trojan Horse</h3>
-              <p>Inherit the security of your exported files. Upload flat files directly to our stateless compute engine and start querying instantly. Zero setup, zero risk.</p>
+              <h3>A Simpler Approach to Data Analysis</h3>
+              <p>Analyze CSV datasets without configuring an external SQL database. Sequelo uses DuckDB to execute analytical queries against your data through an AI-powered natural-language interface.</p>
               <div className="benefits">
                 {/* Bumped Checkmark sizes from 15 to 18 so they match the newly larger text */}
                 <span><Check size={18} /> No database credentials</span>
@@ -275,7 +273,7 @@ export default function LandingPage() {
           <Reveal className="section-heading-row">
             <div>
               <div className="section-kicker">CORE CAPABILITIES</div>
-              <h2>Correct by <span>design.</span></h2>
+              <h2>Transparent <span>Query Execution.</span></h2>
             </div>
             <p>AI-native analytics with deterministic guardrails at every layer.</p>
           </Reveal>
@@ -299,13 +297,16 @@ export default function LandingPage() {
       
       <section className="section engine" id="architecture">
         <div className="shell engine-heading">
-          <Reveal>
-            <div className="section-kicker">THE ENGINE ROOM</div>
-            <h2>Engineered for <span>stateless scalability.</span></h2>
-            <p className="section-intro">Built on a modern, horizontally scalable stack designed for maximum efficiency.</p>
-          </Reveal>
-        </div>
-        
+  <Reveal>
+    <div className="section-kicker">THE ENGINE ROOM</div>
+    <h2>Powered by <span>an AI-driven architecture.</span></h2>
+    <p className="section-intro">
+      Sequelo combines a modern frontend, an AI orchestration pipeline,
+      and DuckDB to transform natural-language questions into analytical
+      queries and clear, data-driven results.
+    </p>
+  </Reveal>
+</div>
         <div className="marquee">
           <div className="marquee-track">
             {[...stack, ...stack].map((tech, index) => {
@@ -369,7 +370,7 @@ export default function LandingPage() {
               <a href={GITHUB_LINK} target="_blank" rel="noreferrer"><GitHubIcon size={16} /> GitHub</a>
               <a href={LINKEDIN_LINK} target="_blank" rel="noreferrer">LinkedIn</a>
             </div>
-            <div className="copyright">© {new Date().getFullYear()} SEQUELO, INC.</div>
+            <div className="copyright">© {new Date().getFullYear()} SEQUELO</div>
           </div>
         </div>
       </footer>
