@@ -110,7 +110,7 @@ synthesizer_llm = ChatGroq(
 # 4. ASYNC GRAPH NODES
 # ==============================================================================
 async def node_supervise(state: ChatState):
-    print("\n--- [DEBUG GRAPH 1] Running Supervisor ---")
+    # print("\n--- [DEBUG GRAPH 1] Running Supervisor ---")
     raw_query = state.get("user_query", "").strip()
     
     if not raw_query:
